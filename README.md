@@ -16,40 +16,63 @@ the current safety policy.
 
 ## Quick start (macOS)
 
-Create a virtual environment with your local hardware dependencies installed,
-then run:
+Start from a fresh Terminal window.
 
 ```bash
-python -m mopa_luiz ui --markcfg /path/to/your/EZCAD/plug/markcfg7
+git clone https://github.com/luizbueno3d/OpenMopa.git
+cd OpenMopa
 ```
 
-You can also set the profile once:
+Create and activate a Python virtual environment:
 
 ```bash
-export MOPA_MARKCFG=/path/to/your/EZCAD/plug/markcfg7
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+Point OpenMopa at your EZCAD calibration profile. Replace the path below with
+the real location of your `markcfg7` file:
+
+```bash
+export MOPA_MARKCFG="/path/to/your/EZCAD/plug/markcfg7"
+```
+
+Check that the hardware/runtime can be detected without sending laser commands:
+
+```bash
+python -m mopa_luiz detect
+```
+
+Start the local UI:
+
+```bash
 python -m mopa_luiz ui
 ```
 
-Then open `http://127.0.0.1:8765`.
+Open `http://127.0.0.1:8765` in Chrome or Safari.
 
-Optional local launcher: build `OpenMopa.app` from `scripts/launcher.applescript`.
-A Terminal window
-opens showing the running server, and your browser opens automatically at
-`http://127.0.0.1:8765`. To stop the app, close the Terminal window.
+To stop OpenMopa, return to the Terminal window and press `Control-C`.
 
-If the server is already running when you double-click, the launcher
-detects it and just opens the browser to the existing URL — no second
-Terminal, no port collision.
+If you do not want to export `MOPA_MARKCFG`, pass the file path directly:
+
+```bash
+python -m mopa_luiz ui --markcfg "/path/to/your/EZCAD/plug/markcfg7"
+```
+
+Optional local launcher:
+
+```bash
+osacompile -o "OpenMopa.app" scripts/launcher.applescript
+```
+
+The launcher opens a Terminal window for the server and opens your browser at
+`http://127.0.0.1:8765`. If the server is already running, it opens the browser
+without starting a second server.
 
 You can drag the generated `OpenMopa.app` to the Dock or copy it to
 `/Applications/`.
-
-> The launcher is an AppleScript-compiled bundle (`Contents/MacOS/applet`
-> is a Mach-O binary that macOS allows to run unsigned). The source lives
-> at `scripts/launcher.applescript`. Rebuild with:
-> ```bash
-> osacompile -o "OpenMopa.app" scripts/launcher.applescript
-> ```
 
 Desktop / package icons are in `assets/icons/`:
 
@@ -64,7 +87,7 @@ Desktop / package icons are in `assets/icons/`:
 .venv/bin/python -m mopa_luiz show-config
 .venv/bin/python -m mopa_luiz pulse-widths
 .venv/bin/python -m mopa_luiz inspect-profile
-.venv/bin/python -m mopa_luiz plan-test-box --power 1 --frequency-khz 30 --pulse-width-ns 200
+.venv/bin/python -m mopa_luiz plan-test-box --power 100 --frequency-khz 30 --pulse-width-ns 200
 .venv/bin/python -m mopa_luiz ui
 ```
 
