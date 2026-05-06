@@ -1,5 +1,7 @@
 # OpenMopa
 
+![OpenMopa banner](assets/openmopa-banner.png)
+
 Safety-first prototype for controlling a JCZ/BJJCZ LMC fiber galvo with a JPT
 M7 60 W MOPA source on macOS. Inspired by LightBurn, built on top of
 `galvoplotter` for the protocol layer.
@@ -28,7 +30,7 @@ python -m mopa_luiz ui
 
 Then open `http://127.0.0.1:8765`.
 
-Optional local launcher: build `MOPA Luiz.app` from `scripts/launcher.applescript`.
+Optional local launcher: build `OpenMopa.app` from `scripts/launcher.applescript`.
 A Terminal window
 opens showing the running server, and your browser opens automatically at
 `http://127.0.0.1:8765`. To stop the app, close the Terminal window.
@@ -37,15 +39,21 @@ If the server is already running when you double-click, the launcher
 detects it and just opens the browser to the existing URL — no second
 Terminal, no port collision.
 
-You can drag the generated `MOPA Luiz.app` to the Dock or copy it to
+You can drag the generated `OpenMopa.app` to the Dock or copy it to
 `/Applications/`.
 
 > The launcher is an AppleScript-compiled bundle (`Contents/MacOS/applet`
 > is a Mach-O binary that macOS allows to run unsigned). The source lives
 > at `scripts/launcher.applescript`. Rebuild with:
 > ```bash
-> osacompile -o "MOPA Luiz.app" scripts/launcher.applescript
+> osacompile -o "OpenMopa.app" scripts/launcher.applescript
 > ```
+
+Desktop / package icons are in `assets/icons/`:
+
+- `openmopa.icns` for macOS.
+- `openmopa.ico` for Windows.
+- `openmopa.png` plus sized PNGs for Linux and Docker/Desktop launchers.
 
 ## Command line
 
@@ -279,6 +287,9 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 ├── LICENSE
 ├── SECURITY.md
 ├── pyproject.toml
+├── assets/
+│   ├── openmopa-banner.png
+│   └── icons/                 macOS .icns, Windows .ico, Linux/Docker PNGs
 ├── mopa_luiz/
 │   ├── __init__.py
 │   ├── __main__.py
@@ -292,7 +303,8 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 │   ├── raster.py               hatch fill: scan-line, even-odd, boustrophedon
 │   └── ui.py                   stdlib HTTP server + single-page UI
 ├── scripts/
-│   └── launcher.applescript    source for MOPA Luiz.app
+│   ├── launcher.applescript    source for OpenMopa.app
+│   └── create_openmopa_assets.py
 └── tests/
     ├── test_config.py
     ├── test_safety.py
@@ -306,7 +318,7 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 - Local EZCAD profiles and calibration files: `markcfg*`, `*.cor`.
 - User job/design files: `*.ezd`, `*.dxf`, `*.svg`, `*.stl`.
 - Local UI state: `layer_settings.json`.
-- Generated launcher bundle: `MOPA Luiz.app/`.
+- Generated launcher bundles: `*.app/`.
 
 ## Hardware
 

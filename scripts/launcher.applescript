@@ -1,4 +1,4 @@
--- MOPA Luiz launcher.
+-- OpenMopa launcher.
 -- 1. If the UI server is already running on 127.0.0.1:8765, just open the browser.
 -- 2. Otherwise, start it inside a Terminal window so the user can see logs and
 --    close the window to quit. Then open the browser ~2 seconds later.

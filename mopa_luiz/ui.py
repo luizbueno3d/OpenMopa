@@ -66,7 +66,7 @@ HTML = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MOPA Luiz</title>
+  <title>OpenMopa</title>
   <style>
     :root {
       color-scheme: dark;
@@ -529,7 +529,7 @@ HTML = """<!doctype html>
 </head>
 <body>
   <header>
-    <h1>MOPA Luiz</h1>
+    <h1>OpenMopa</h1>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <div id="status" class="pill"><span class="dot"></span><span>Checking USB</span></div>
       <div id="powerMode" class="pill">ARM required for emission</div>
@@ -2488,7 +2488,7 @@ def first_burn_polylines(kind: str) -> list[list[list[float]]]:
 def serve(host: str, port: int, markcfg: Path) -> None:
     handler = type("ConfiguredUiHandler", (UiHandler,), {"markcfg": markcfg})
     server = ThreadingHTTPServer((host, port), handler)
-    print(f"MOPA Luiz UI: http://{host}:{port}  (safety: 0..100% power, ARM required)")
+    print(f"OpenMopa UI: http://{host}:{port}  (safety: 0..100% power, ARM required)")
     print("Default behavior is dry-run / red-light framing only. Mark Job needs ARM and confirmation.")
     try:
         server.serve_forever()

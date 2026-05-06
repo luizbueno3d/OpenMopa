@@ -10,7 +10,7 @@ markcfg*
 *.dxf
 *.svg
 *.stl
-MOPA Luiz.app/
+*.app/
 dist/
 build/
 *.egg-info/

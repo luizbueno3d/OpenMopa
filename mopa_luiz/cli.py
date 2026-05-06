@@ -301,8 +301,8 @@ def inspect_profile(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="mopa-luiz",
-        description="Dry-run-first JCZ/LMC JPT M7 MOPA control prototype.",
+        prog="openmopa",
+        description="OpenMopa: dry-run-first JCZ/LMC JPT M7 MOPA control prototype.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
