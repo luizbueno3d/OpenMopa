@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.mopa-luiz-ui.log
+layer_settings.json
+markcfg*
+*.cor
+*.ezd
+*.dxf
+*.svg
+*.stl
+MOPA Luiz.app/
+dist/
+build/
+*.egg-info/
