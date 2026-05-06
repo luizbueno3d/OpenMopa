@@ -96,24 +96,6 @@ def draw_desktop_icon(size: int = 1024) -> Image.Image:
     return image.resize((size, size), Image.Resampling.LANCZOS)
 
 
-def draw_banner(width: int = 1792, height: int = 1024) -> Image.Image:
-    image = Image.new("RGB", (width, height), (9, 11, 15))
-    draw = ImageDraw.Draw(image)
-    for y in range(height):
-        shade = int(18 + 22 * (1 - abs(y - height * 0.45) / height))
-        draw.line((0, y, width, y), fill=(shade, shade + 2, shade + 7))
-    icon = draw_desktop_icon(760)
-    image.paste(icon, (40, 130), icon)
-    title = font(190)
-    subtitle = font(34)
-    draw.text((650, 360), "Open", font=title, fill=(242, 244, 241), anchor="lm")
-    draw.text((1082, 360), "Mopa", font=title, fill=(27, 132, 255), anchor="lm")
-    draw.line((736, 574, 1710, 574), fill=(31, 125, 255), width=4)
-    draw.text((790, 650), "OPEN SOURCE MOPA / GALVO LASER CONTROLLER", font=subtitle, fill=(222, 230, 236), anchor="lm")
-    draw.ellipse((1410, 226, 1448, 264), fill=(255, 143, 31))
-    return image
-
-
 def write_icns(source: Image.Image, out_path: Path) -> None:
     chunks = [("icp4", 16), ("icp5", 32), ("icp6", 64), ("ic07", 128), ("ic08", 256), ("ic09", 512), ("ic10", 1024)]
     payload = bytearray()
@@ -135,7 +117,6 @@ def save_icons() -> None:
         source.resize((size, size), Image.Resampling.LANCZOS).save(ICONS / f"openmopa-{size}.png")
     source.save(ICONS / "openmopa.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
     write_icns(source, ICONS / "openmopa.icns")
-    draw_banner().save(ASSETS / "openmopa-banner.png")
 
     MACOS_RESOURCES.mkdir(parents=True, exist_ok=True)
     write_icns(source, MACOS_RESOURCES / "openmopa.icns")

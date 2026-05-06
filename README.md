@@ -1,6 +1,8 @@
 # OpenMopa
 
-![OpenMopa banner](assets/openmopa-banner.png)
+<p align="center">
+  <img src="assets/icons/openmopa.png" alt="OpenMopa icon" width="160">
+</p>
 
 Safety-first prototype for controlling a JCZ/BJJCZ LMC fiber galvo with a JPT
 M7 60 W MOPA source on macOS. Inspired by LightBurn, built on top of
@@ -288,7 +290,6 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 ├── SECURITY.md
 ├── pyproject.toml
 ├── assets/
-│   ├── openmopa-banner.png
 │   └── icons/                 macOS .icns, Windows .ico, Linux/Docker PNGs
 ├── mopa_luiz/
 │   ├── __init__.py
