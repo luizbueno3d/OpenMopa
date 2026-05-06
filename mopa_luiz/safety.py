@@ -5,7 +5,7 @@ or one of its narrower wrappers before contacting the controller.
 
 What this module enforces today:
   - Power must lie within the laser's electrical 0..100% range.
-  - Frequency must lie within the markcfg's MINPWMFREQ / MAXPWMFREQ bounds.
+  - Frequency must lie within the machine profile's MINPWMFREQ / MAXPWMFREQ bounds.
   - Pulse width must land on the JPT M7 table (within rounding).
   - Emission paths must carry an explicit `arm=True` and the literal
     confirmation token "ARM".
@@ -74,7 +74,7 @@ def evaluate_emission(
         requested_freq_hz = frequency_khz * 1000.0
         if requested_freq_hz < min_freq_hz or requested_freq_hz > max_freq_hz:
             errors.append(
-                f"frequency {requested_freq_hz:.0f} Hz outside markcfg bounds "
+                f"frequency {requested_freq_hz:.0f} Hz outside machine profile bounds "
                 f"{min_freq_hz}..{max_freq_hz} Hz"
             )
 
@@ -130,7 +130,7 @@ def validate_layer_settings(
         requested_freq_hz = frequency_khz * 1000.0
         if requested_freq_hz < min_freq_hz or requested_freq_hz > max_freq_hz:
             errors.append(
-                f"layer frequency {requested_freq_hz:.0f} Hz outside markcfg "
+                f"layer frequency {requested_freq_hz:.0f} Hz outside machine profile "
                 f"{min_freq_hz}..{max_freq_hz} Hz"
             )
     if pulse_width_ns not in JPT_M7_PULSE_WIDTHS_NS:

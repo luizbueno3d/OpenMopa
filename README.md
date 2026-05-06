@@ -8,9 +8,9 @@ Safety-first prototype for controlling a JCZ/BJJCZ LMC fiber galvo with a JPT
 M7 60 W MOPA source on macOS. Inspired by LightBurn, built on top of
 `galvoplotter` for the protocol layer.
 
-This project does not modify the EZCAD folder. The active EZCAD profile
-(`markcfg7`) is read as a calibrated reference; only the parsed values are
-used. Default behavior is dry-run / red-light framing only. Laser emission
+OpenMopa ships with a default machine profile for a 200 mm JPT M7 MOPA setup.
+The profile is read-only at runtime; OpenMopa never modifies your calibration
+files. Default behavior is dry-run / red-light framing only. Laser emission
 happens only after explicit ARM and a final confirmation, and only inside
 the current safety policy.
 
@@ -32,13 +32,6 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
-Point OpenMopa at your EZCAD calibration profile. Replace the path below with
-the real location of your `markcfg7` file:
-
-```bash
-export MOPA_MARKCFG="/path/to/your/EZCAD/plug/markcfg7"
-```
-
 Check that the hardware/runtime can be detected without sending laser commands:
 
 ```bash
@@ -55,10 +48,20 @@ Open `http://127.0.0.1:8765` in Chrome or Safari.
 
 To stop OpenMopa, return to the Terminal window and press `Control-C`.
 
-If you do not want to export `MOPA_MARKCFG`, pass the file path directly:
+By default, OpenMopa uses the bundled profile at
+`profiles/openmopa-machine.ini`. If your machine has a different field size or
+frequency range, copy that file, edit the copy, and pass it with `--profile`:
 
 ```bash
-python -m mopa_luiz ui --markcfg "/path/to/your/EZCAD/plug/markcfg7"
+cp profiles/openmopa-machine.ini profiles/my-machine.ini
+python -m mopa_luiz ui --profile profiles/my-machine.ini
+```
+
+You can also set a custom profile once per Terminal session:
+
+```bash
+export OPENMOPA_PROFILE="profiles/my-machine.ini"
+python -m mopa_luiz ui
 ```
 
 Optional local launcher:
@@ -99,7 +102,7 @@ before the controller is touched.
 - Power may be set anywhere in the laser's electrical 0..100% range.
 - Pulse width is snapped to the guarded JPT M7 table; values that don't
   land on the table within rounding are rejected.
-- Frequency must lie within `markcfg7`'s `MINPWMFREQ` / `MAXPWMFREQ` bounds.
+- Frequency must lie within the machine profile's `MINPWMFREQ` / `MAXPWMFREQ` bounds.
 - Live marking still requires typing `ARM` in the UI plus a final
   confirmation in the modal.
 - Use red-light framing (Frame Once / Continuous Frame) before marking.
@@ -109,7 +112,7 @@ before the controller is touched.
 ## UI features
 
 Run with the generated `.app` (above) or with
-`python -m mopa_luiz ui --markcfg /path/to/markcfg7`, then open
+`python -m mopa_luiz ui`, then open
 `http://127.0.0.1:8765`.
 
 **Import**
@@ -172,11 +175,10 @@ pulse, speed, passes, output, visibility, and color.
 - The right-panel `Selected only` toggle limits planning, red-light framing,
   continuous framing, and marking to the current canvas selection.
 
-**Raster fill (EZCAD/LightBurn-style hatch)**
+**Raster fill (hatch / fill engraving)**
 
 Raster layers fill closed regions with hatch lines instead of tracing the
-outline. The algorithm matches what LightBurn calls "Fill" and EZCAD calls
-"Hatch":
+outline. The algorithm matches the common laser/CAD hatch-fill workflow:
 
 1. Closed polylines are detected (a path that returns to its start within
    tolerance). Open paths on a raster layer are skipped — the UI reports
@@ -271,7 +273,7 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 
 **Profile inspection**
 
-- The Profile panel shows the parsed `markcfg7` keys.
+- The Profile panel shows the parsed machine profile keys.
 - `Inspect Profile Usage` (and the `inspect-profile` CLI) classify each
   known field as `applied`, `parsed but not applied`, or `not found`.
 
@@ -283,7 +285,7 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 
 55 stdlib `unittest` cases; no third-party deps. Covers:
 
-- markcfg parsing and missing-section error
+- machine profile parsing and missing-section error
 - DXF import: `LINE`, `LWPOLYLINE`, old-style `POLYLINE`/`VERTEX`/`SEQEND`,
   and normalized import output
 - pulse-width snap to JPT M7 table
@@ -314,6 +316,8 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 ├── pyproject.toml
 ├── assets/
 │   └── icons/                 macOS .icns, Windows .ico, Linux/Docker PNGs
+├── profiles/
+│   └── openmopa-machine.ini   bundled 200 mm JPT M7 machine profile
 ├── mopa_luiz/
 │   ├── __init__.py
 │   ├── __main__.py
@@ -339,7 +343,7 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 
 ## Files intentionally not committed
 
-- Local EZCAD profiles and calibration files: `markcfg*`, `*.cor`.
+- Local machine profiles and calibration files: `markcfg*`, `*.cor`.
 - User job/design files: `*.ezd`, `*.dxf`, `*.svg`, `*.stl`.
 - Local UI state: `layer_settings.json`.
 - Generated launcher bundles: `*.app/`.
@@ -349,7 +353,7 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 - Expected JCZ/LMC USB id: `0x9588:0x9899`.
 - Base library: `galvoplotter` (`galvo.controller.GalvoController`).
 - Protocol reference: Balor.
-- Pulse-width guardrail reference: `ezcad-2-to-3`.
+- Pulse-width guardrail reference: JPT M7 pulse-width table.
 - Material library tools for later: `fibrelasertools`, `LaserParamsConverter`.
 
 ## Known limitations
@@ -366,6 +370,6 @@ every visible raster layer with `output=yes`. The job summary surfaces a
   coordinates). Codex added a Cmd-Z / Shift-Cmd-Z undo stack covering
   geometry edits.
 - The `m_bEnableIPGSetPulseWidth`, `m_nEnableFiberLaserStateCheckInMarking`,
-  delay fields, axis flips, and correction-file references in `markcfg7`
+  delay fields, axis flips, and correction-file references in machine profiles
   are parsed but not applied. The `inspect-profile` report says so
   explicitly per field.

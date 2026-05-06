@@ -44,7 +44,7 @@ KNOWN_FIELDS: tuple[ProfileField, ...] = (
     ProfileField("m_nIPGSerialNo", "IPG/JPT serial preset", True, (),
                  notes="Display only; informs that this is a JPT M7 profile."),
     ProfileField("m_nEnableFiberLaserStateCheckInMarking", "Fiber laser state-check in marking", True, (),
-                 notes="Parsed from EZCAD; not enforced in this prototype."),
+                 notes="Parsed from the machine profile; not enforced in this prototype."),
     ProfileField("LASERTYPE", "Laser type code", False, (),
                  notes="Reported in show-config when present."),
     ProfileField("REDLIGHTSPEED", "Red-light framing speed", False, (),

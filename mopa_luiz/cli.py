@@ -14,7 +14,11 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_MARKCFG = Path(os.environ.get("MOPA_MARKCFG", "markcfg7"))
+DEFAULT_PROFILE = Path(os.environ.get(
+    "OPENMOPA_PROFILE",
+    Path(__file__).resolve().parents[1] / "profiles" / "openmopa-machine.ini",
+))
+DEFAULT_MARKCFG = DEFAULT_PROFILE
 
 JCZ_VENDOR_ID = 0x9588
 JCZ_PRODUCT_ID = 0x9899
@@ -69,7 +73,6 @@ class MarkConfig:
 def load_markcfg(path: Path) -> MarkConfig:
     parser = configparser.ConfigParser(interpolation=None)
     parser.optionxform = str
-    # EZCAD config files can contain non-UTF status strings; the keys we need are ASCII.
     text = path.read_text(encoding="latin-1", errors="ignore")
     parser.read_string(text)
     if "LMC_CFG" not in parser:
@@ -189,12 +192,12 @@ def config_summary(cfg: MarkConfig) -> dict[str, Any]:
     )
     summary = {key: cfg.values.get(key) for key in keys if key in cfg.values}
     summary["path"] = str(cfg.path)
-    summary["safe_status"] = "parsed only; EZCAD folder not modified"
+    summary["safe_status"] = "parsed only; machine profile not modified"
     return summary
 
 
 def show_config(args: argparse.Namespace) -> int:
-    cfg = load_markcfg(args.markcfg)
+    cfg = load_markcfg(args.profile)
     summary = config_summary(cfg)
     print(json.dumps(summary, indent=2))
     return 0
@@ -218,7 +221,7 @@ def build_test_box_plan(
     requested_freq_hz = frequency_khz * 1000.0
     if requested_freq_hz < min_freq_hz or requested_freq_hz > max_freq_hz:
         raise ValueError(
-            f"frequency {requested_freq_hz:.0f} Hz outside markcfg bounds "
+            f"frequency {requested_freq_hz:.0f} Hz outside machine profile bounds "
             f"{min_freq_hz}..{max_freq_hz} Hz"
         )
     if power < 0.0 or power > 100.0:
@@ -254,7 +257,7 @@ def build_test_box_plan(
         "mode": "armed" if arm else "dry-run",
         "emission_enabled": False,
         "reason": "hardware emission is intentionally not implemented in this first prototype",
-        "markcfg": str(cfg.path),
+        "profile": str(cfg.path),
         "field_size_mm": cfg.get_float("FIELDSIZE"),
         "power_percent": power,
         "frequency_khz": frequency_khz,
@@ -266,7 +269,7 @@ def build_test_box_plan(
 
 
 def plan_test_box(args: argparse.Namespace) -> int:
-    cfg = load_markcfg(args.markcfg)
+    cfg = load_markcfg(args.profile)
     plan = build_test_box_plan(
         cfg,
         power=args.power,
@@ -284,14 +287,14 @@ def plan_test_box(args: argparse.Namespace) -> int:
 def serve_ui_command(args: argparse.Namespace) -> int:
     from .ui import serve
 
-    serve(host=args.host, port=args.port, markcfg=args.markcfg)
+    serve(host=args.host, port=args.port, markcfg=args.profile)
     return 0
 
 
 def inspect_profile(args: argparse.Namespace) -> int:
     from .profile import inspect_path
 
-    print(json.dumps(inspect_path(args.markcfg), indent=2))
+    print(json.dumps(inspect_path(args.profile), indent=2))
     return 0
 
 
@@ -305,15 +308,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("detect", help="Check local USB/runtime readiness without laser commands.")
     p.set_defaults(func=detect)
 
-    p = sub.add_parser("show-config", help="Parse EZCAD markcfg7 and print mapped fields.")
-    p.add_argument("--markcfg", type=Path, default=DEFAULT_MARKCFG)
+    p = sub.add_parser("show-config", help="Parse the machine profile and print mapped fields.")
+    p.add_argument("--profile", "--markcfg", dest="profile", metavar="PROFILE", type=Path, default=DEFAULT_PROFILE)
     p.set_defaults(func=show_config)
 
     p = sub.add_parser("pulse-widths", help="Print the guarded JPT M7 pulse-width table.")
     p.set_defaults(func=pulse_widths)
 
     p = sub.add_parser("plan-test-box", help="Plan a test box without emission.")
-    p.add_argument("--markcfg", type=Path, default=DEFAULT_MARKCFG)
+    p.add_argument("--profile", "--markcfg", dest="profile", metavar="PROFILE", type=Path, default=DEFAULT_PROFILE)
     p.add_argument("--power", type=float, default=100.0, help="Power percent; valid range is 0..100.")
     p.add_argument("--frequency-khz", type=float, default=30.0)
     p.add_argument("--pulse-width-ns", type=float, default=200.0)
@@ -324,11 +327,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("ui", help="Open the local dry-run web UI.")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8765)
-    p.add_argument("--markcfg", type=Path, default=DEFAULT_MARKCFG)
+    p.add_argument("--profile", "--markcfg", dest="profile", metavar="PROFILE", type=Path, default=DEFAULT_PROFILE)
     p.set_defaults(func=serve_ui_command)
 
-    p = sub.add_parser("inspect-profile", help="Report which markcfg fields are applied/unused.")
-    p.add_argument("--markcfg", type=Path, default=DEFAULT_MARKCFG)
+    p = sub.add_parser("inspect-profile", help="Report which machine profile fields are applied/unused.")
+    p.add_argument("--profile", "--markcfg", dest="profile", metavar="PROFILE", type=Path, default=DEFAULT_PROFILE)
     p.set_defaults(func=inspect_profile)
     return parser
 

@@ -1,6 +1,6 @@
 """Raster engraving: fill closed regions with hatch lines.
 
-This is the same approach EZCAD's "Hatch" and LightBurn's "Fill" use:
+This is the same hatch/fill approach common in laser/CAD software:
 
   1. Identify closed polylines (regions). Open paths are skipped.
   2. Rotate every region so the hatch direction becomes horizontal.
