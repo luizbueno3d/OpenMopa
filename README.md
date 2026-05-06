@@ -73,6 +73,12 @@ without starting a second server.
 You can drag the generated `OpenMopa.app` to the Dock or copy it to
 `/Applications/`.
 
+## Interface preview
+
+<p align="center">
+  <img src="assets/OpenMopaUI.png" alt="OpenMopa user interface" width="900">
+</p>
+
 ## Platform support
 
 - **macOS:** supported today and used for active development.
