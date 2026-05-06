@@ -669,7 +669,7 @@ HTML = """<!doctype html>
             Marking uses the selected layer's power, frequency, pulse, speed, and passes from Cuts / Layers.
           </div>
           <div class="grid2">
-            <label>Frame Power %<input id="power" type="number" min="0" max="100" step="1" value="1"></label>
+            <label>Frame Power %<input id="power" type="number" min="0" max="100" step="1" value="100"></label>
             <label>Frame Frequency kHz<input id="frequency" type="number" min="1" max="4000" step="1" value="30"></label>
           </div>
           <div class="grid2">
@@ -678,11 +678,11 @@ HTML = """<!doctype html>
           </div>
           <div class="info">
             <strong>First-burn helpers</strong>
-            Diagnostic test-fire shortcuts for setup only. Low-Power Dot confirms emission at one spot.
+            Diagnostic test-fire shortcuts for setup only. Test Dot confirms emission at one spot.
             5 mm Line confirms emission plus galvo motion. They are not part of the normal job workflow.
           </div>
           <div class="grid2">
-            <button class="warning" id="dotTest">Low-Power Dot</button>
+            <button class="warning" id="dotTest">Test Dot</button>
             <button class="warning" id="lineTest">5 mm Line</button>
           </div>
         </details>
@@ -2060,7 +2060,7 @@ HTML = """<!doctype html>
         const errs = (preview.safety && preview.safety.errors) || [];
         if (errs.length) { show({ refused: errs }); return; }
         openModal({
-          title: kind === 'dot' ? 'Confirm low-power dot' : 'Confirm 5 mm line',
+          title: kind === 'dot' ? 'Confirm test dot' : 'Confirm 5 mm line',
           body: `<p>Laser will emit now. Power ${preview.params.power}%, Frequency ${preview.params.frequency_khz} kHz,
                   Pulse ${preview.params.pulse_width_ns} ns, Speed ${preview.params.mark_speed} mm/s.</p>
                   <p>This is a first-burn helper for fixturing tests.</p>`,

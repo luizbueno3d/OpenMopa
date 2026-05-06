@@ -211,7 +211,6 @@ def build_test_box_plan(
     frequency_khz: float,
     pulse_width_ns: float,
     size_mm: float,
-    allow_power_above_1: bool = False,
     arm: bool = False,
 ) -> dict[str, Any]:
     min_freq_hz = cfg.get_int("MINPWMFREQ", 1000) or 1000
@@ -222,10 +221,8 @@ def build_test_box_plan(
             f"frequency {requested_freq_hz:.0f} Hz outside markcfg bounds "
             f"{min_freq_hz}..{max_freq_hz} Hz"
         )
-    if power > 1.0 and not allow_power_above_1:
-        raise ValueError(
-            "test power is capped at 1%. Pass --allow-power-above-1 only for dry-run planning."
-        )
+    if power < 0.0 or power > 100.0:
+        raise ValueError("test power must be between 0% and 100%.")
     snapped_pw = nearest_pulse_width(pulse_width_ns)
     commands = [
         {
@@ -276,7 +273,6 @@ def plan_test_box(args: argparse.Namespace) -> int:
         frequency_khz=args.frequency_khz,
         pulse_width_ns=args.pulse_width_ns,
         size_mm=args.size_mm,
-        allow_power_above_1=args.allow_power_above_1,
         arm=args.arm,
     )
     print(json.dumps(plan, indent=2))
@@ -316,13 +312,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("pulse-widths", help="Print the guarded JPT M7 pulse-width table.")
     p.set_defaults(func=pulse_widths)
 
-    p = sub.add_parser("plan-test-box", help="Plan a safe low-power test box without emission.")
+    p = sub.add_parser("plan-test-box", help="Plan a test box without emission.")
     p.add_argument("--markcfg", type=Path, default=DEFAULT_MARKCFG)
-    p.add_argument("--power", type=float, default=1.0, help="Power percent; default and cap is 1.")
+    p.add_argument("--power", type=float, default=100.0, help="Power percent; valid range is 0..100.")
     p.add_argument("--frequency-khz", type=float, default=30.0)
     p.add_argument("--pulse-width-ns", type=float, default=200.0)
     p.add_argument("--size-mm", type=float, default=10.0)
-    p.add_argument("--allow-power-above-1", action="store_true")
     p.add_argument("--arm", action="store_true", help="Accepted for planning; still no emission.")
     p.set_defaults(func=plan_test_box)
 

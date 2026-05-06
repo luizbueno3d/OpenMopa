@@ -396,7 +396,6 @@ def mark_box(cfg: MarkConfig, params: JobParams, arm: bool, confirm: str) -> dic
         frequency_khz=params.frequency_khz,
         pulse_width_ns=params.pulse_width_ns,
         size_mm=params.size_mm,
-        allow_power_above_1=True,
         arm=True,
     )
     field_size = cfg.get_float("FIELDSIZE", 200.0) or 200.0

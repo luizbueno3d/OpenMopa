@@ -138,8 +138,8 @@ pulse, speed, passes, output, visibility, and color.
 
 | Layer                   | Operation        | Defaults                |
 | ----------------------- | ---------------- | ----------------------- |
-| Vector Engrave          | `vector_engrave` | 1% / 30 kHz / 200 ns / 1000 mm·s |
-| Vector Cut / Deep Mark  | `vector_cut`     | 3% / 30 kHz / 200 ns / 300 mm·s  |
+| Vector Engrave          | `vector_engrave` | 100% / 30 kHz / 200 ns / 1000 mm·s |
+| Vector Cut / Deep Mark  | `vector_cut`     | 100% / 30 kHz / 200 ns / 300 mm·s  |
 | Raster                  | `raster_engrave` | hatch fill, 0.1 mm pitch, angle 0°, +90° per pass |
 | Frame Only              | `frame_only`     | no emission             |
 
@@ -229,8 +229,8 @@ every visible raster layer with `output=yes`. The job summary surfaces a
   job five times. Layer-level passes still apply inside each repeat.
 - `STOP ENGRAVING` stops continuous framing and terminates the active
   isolated hardware job process.
-- **First-Burn Helpers**: `Low-Power Dot` and `5 mm Line`. Both default
-  to 1% power, 30 kHz, 200 ns, 1000 mm·s. Both go through the same
+- **First-Burn Helpers**: `Test Dot` and `5 mm Line`. Both default
+  to 100% power, 30 kHz, 200 ns, 1000 mm·s. Both go through the same
   ARM + confirmation modal.
 
 **Hardware reliability and diagnostics**

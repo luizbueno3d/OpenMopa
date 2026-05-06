@@ -71,10 +71,10 @@ class TestBoxPlanTests(unittest.TestCase):
     def tearDown(self):
         self._fix.cleanup()
 
-    def test_default_caps_power_at_one_percent(self):
+    def test_blocks_power_above_100_percent(self):
         with self.assertRaises(ValueError):
             build_test_box_plan(
-                self.cfg, power=2.0, frequency_khz=30.0,
+                self.cfg, power=101.0, frequency_khz=30.0,
                 pulse_width_ns=200.0, size_mm=10.0,
             )
 
