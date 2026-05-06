@@ -5,7 +5,7 @@
 </p>
 
 Safety-first prototype for controlling a JCZ/BJJCZ LMC fiber galvo with a JPT
-M7 60 W MOPA source on macOS. Inspired by LightBurn, built on top of
+M7 60 W MOPA source. Inspired by LightBurn, built on top of
 `galvoplotter` for the protocol layer.
 
 OpenMopa ships with a default machine profile for a 200 mm JPT M7 MOPA setup.
@@ -14,57 +14,53 @@ files. Default behavior is dry-run / red-light framing only. Laser emission
 happens only after explicit ARM and a final confirmation, and only inside
 the current safety policy.
 
-## Quick start (macOS)
+## Quick start
+
+OpenMopa is currently developed and tested on macOS. The UI is a local web app,
+so the screen you use in the browser is simple; the hardware layer is the part
+that still needs platform-specific testing.
 
 Start from a fresh Terminal window.
 
 ```bash
 git clone https://github.com/luizbueno3d/OpenMopa.git
 cd OpenMopa
-```
-
-Create and activate a Python virtual environment:
-
-```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e .
-```
-
-Check that the hardware/runtime can be detected without sending laser commands:
-
-```bash
-python -m mopa_luiz detect
-```
-
-Start the local UI:
-
-```bash
-python -m mopa_luiz ui
+python -m pip install -e ".[hardware]"
+openmopa ui
 ```
 
 Open `http://127.0.0.1:8765` in Chrome or Safari.
 
 To stop OpenMopa, return to the Terminal window and press `Control-C`.
 
-By default, OpenMopa uses the bundled profile at
-`profiles/openmopa-machine.ini`. If your machine has a different field size or
-frequency range, copy that file, edit the copy, and pass it with `--profile`:
+Before connecting to a machine, you can check USB/runtime visibility without
+sending laser commands:
+
+```bash
+openmopa detect
+```
+
+OpenMopa includes a default machine profile at `profiles/openmopa-machine.ini`,
+so most people do not need to configure anything before first launch. If your
+machine has a different field size or frequency range, copy the bundled profile,
+edit the copy, and run with `--profile`:
 
 ```bash
 cp profiles/openmopa-machine.ini profiles/my-machine.ini
-python -m mopa_luiz ui --profile profiles/my-machine.ini
+openmopa ui --profile profiles/my-machine.ini
 ```
 
 You can also set a custom profile once per Terminal session:
 
 ```bash
 export OPENMOPA_PROFILE="profiles/my-machine.ini"
-python -m mopa_luiz ui
+openmopa ui
 ```
 
-Optional local launcher:
+Optional macOS launcher:
 
 ```bash
 osacompile -o "OpenMopa.app" scripts/launcher.applescript
@@ -77,6 +73,25 @@ without starting a second server.
 You can drag the generated `OpenMopa.app` to the Dock or copy it to
 `/Applications/`.
 
+## Platform support
+
+- **macOS:** supported today and used for active development.
+- **Windows:** not validated yet. The browser UI and Python package should be
+  portable, but hardware USB access and packaging still need testing.
+- **Linux:** not validated yet. The browser UI and Python package should be
+  portable, but hardware USB permissions/runtime setup still need testing.
+
+Until Windows and Linux hardware paths are tested, treat them as experimental
+and use dry-run / preview workflows only.
+
+## Troubleshooting
+
+- **`openmopa: command not found`:** activate the virtual environment again with
+  `source .venv/bin/activate`, then retry `openmopa ui`.
+- **Browser does not open:** manually open `http://127.0.0.1:8765`.
+- **Hardware not detected:** reconnect USB/power, try another cable/adapter,
+  then run `openmopa detect` again.
+
 Desktop / package icons are in `assets/icons/`:
 
 - `openmopa.icns` for macOS.
@@ -86,18 +101,18 @@ Desktop / package icons are in `assets/icons/`:
 ## Command line
 
 ```bash
-.venv/bin/python -m mopa_luiz detect
-.venv/bin/python -m mopa_luiz show-config
-.venv/bin/python -m mopa_luiz pulse-widths
-.venv/bin/python -m mopa_luiz inspect-profile
-.venv/bin/python -m mopa_luiz plan-test-box --power 100 --frequency-khz 30 --pulse-width-ns 200
-.venv/bin/python -m mopa_luiz ui
+openmopa detect
+openmopa show-config
+openmopa pulse-widths
+openmopa inspect-profile
+openmopa plan-test-box --power 100 --frequency-khz 30 --pulse-width-ns 200
+openmopa ui
 ```
 
 ## Safety policy
 
-All laser-emission paths flow through `mopa_luiz/safety.py:evaluate_emission`
-before the controller is touched.
+All laser-emission paths flow through one safety gate before the controller is
+touched.
 
 - Power may be set anywhere in the laser's electrical 0..100% range.
 - Pulse width is snapped to the guarded JPT M7 table; values that don't
@@ -112,7 +127,7 @@ before the controller is touched.
 ## UI features
 
 Run with the generated `.app` (above) or with
-`python -m mopa_luiz ui`, then open
+`openmopa ui`, then open
 `http://127.0.0.1:8765`.
 
 **Import**
