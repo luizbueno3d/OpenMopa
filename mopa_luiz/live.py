@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import multiprocessing as mp
+import os
 from pathlib import Path
 import threading
 import time
@@ -28,6 +29,11 @@ CALIBRATION_PATH = Path(__file__).resolve().parent.parent / "calibration.json"
 # value must never wildly mis-size a laser job.
 SCALE_CORRECTION_MIN = 0.5
 SCALE_CORRECTION_MAX = 2.0
+
+
+def mock_mode() -> bool:
+    """OPENMOPA_MOCK=1 exercises the full command chain on a mock connection."""
+    return os.environ.get("OPENMOPA_MOCK", "") == "1"
 
 
 def load_scale_correction() -> float:
@@ -257,6 +263,7 @@ def text_segments(text: str, size_mm: float) -> list[tuple[tuple[float, float], 
 
 def connect_controller(cfg: MarkConfig, params: JobParams) -> GalvoController:
     field_size = effective_field_size(cfg)
+    usb_events: list[str] = []
     controller = GalvoController(
         source="fiber",
         power=params.power,
@@ -266,8 +273,24 @@ def connect_controller(cfg: MarkConfig, params: JobParams) -> GalvoController:
         travel_speed=3000.0,
         light_speed=3000.0,
         galvos_per_mm=0xFFFF / field_size,
+        mock=mock_mode(),
+        usb_log=usb_events.append,
     )
     apply_wait_timeouts(controller)
+    try:
+        controller.connect_if_needed()
+    except Exception as exc:
+        controller._sending = False  # make shutdown() safe: no further USB writes
+        try:
+            controller.shutdown()
+        except Exception:
+            pass
+        detail = "; ".join(usb_events[-4:]) or str(exc)
+        raise RuntimeError(
+            "cannot reach the JCZ/LMC laser over USB "
+            f"({type(exc).__name__}). Check power, USB cable, and the Detect "
+            f"panel, then retry. Log: {detail}"
+        ) from exc
     return controller
 
 
@@ -340,6 +363,7 @@ def frame_box(cfg: MarkConfig, params: JobParams) -> dict[str, Any]:
             "ok": True,
             "operation": "frame",
             "emission_enabled": False,
+            "mock": mock_mode(),
             "points": points,
         }
     finally:
@@ -390,6 +414,7 @@ class FrameLoop:
                 "ok": True,
                 "operation": "frame_loop_start",
                 "emission_enabled": False,
+                "mock": mock_mode(),
                 "points": self._points,
             }
 
@@ -456,6 +481,7 @@ def mark_box(cfg: MarkConfig, params: JobParams, arm: bool, confirm: str) -> dic
             "ok": True,
             "operation": "mark",
             "emission_enabled": True,
+            "mock": mock_mode(),
             "plan": plan,
             "points": points,
             "text": params.text,
@@ -494,6 +520,7 @@ def frame_polylines(cfg: MarkConfig, params: JobParams, polylines: list[list[lis
             "ok": True,
             "operation": "frame_geometry",
             "emission_enabled": False,
+            "mock": mock_mode(),
             "paths": len(job_paths),
             "points": sum(len(path) for path in job_paths),
         }
@@ -539,6 +566,7 @@ def mark_polylines(
             "ok": True,
             "operation": "mark_geometry",
             "emission_enabled": True,
+            "mock": mock_mode(),
             "power_percent": params.power,
             "frequency_khz": params.frequency_khz,
             "effective_pulse_width_ns": nearest_pulse_width(params.pulse_width_ns),

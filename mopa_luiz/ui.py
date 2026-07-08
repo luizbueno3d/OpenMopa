@@ -2322,6 +2322,8 @@ class UiHandler(BaseHTTPRequestHandler):
                 return
 
             if path == "/api/test/run":
+                FRAME_LOOP.stop()
+                clear_stop_request()
                 kind = str(payload.get("kind", "dot"))
                 params = first_burn_params(kind)
                 arm = bool(payload.get("arm"))
@@ -2414,6 +2416,8 @@ class UiHandler(BaseHTTPRequestHandler):
                 return
 
             if path == "/api/frame":
+                FRAME_LOOP.stop()
+                clear_stop_request()
                 if framing_polylines:
                     self.send_json(HTTPStatus.OK, run_hardware_job("frame_polylines", cfg, params, framing_polylines))
                 else:
@@ -2480,6 +2484,7 @@ class UiHandler(BaseHTTPRequestHandler):
                                 arm=bool(live.get("arm")),
                                 confirm=str(live.get("confirm", "")),
                                 operation=layer.operation,
+                                timeout_s=600.0,
                             ))
                             results[-1].update({
                                 "repeat": repeat_index + 1,
@@ -2497,6 +2502,7 @@ class UiHandler(BaseHTTPRequestHandler):
                                     arm=bool(live.get("arm")),
                                     confirm=str(live.get("confirm", "")),
                                     operation=layer.operation,
+                                    timeout_s=600.0,
                                 ))
                                 results[-1].update({"repeat": repeat_index + 1})
                 if not results:
@@ -2514,6 +2520,7 @@ class UiHandler(BaseHTTPRequestHandler):
                             emitting_polylines or framing_polylines,
                             arm=bool(live.get("arm")),
                             confirm=str(live.get("confirm", "")),
+                            timeout_s=600.0,
                         ))
                         results[-1].update({"repeat": repeat_index + 1})
                 self.send_json(HTTPStatus.OK, {
