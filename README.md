@@ -101,6 +101,17 @@ and use dry-run / preview workflows only.
 - **Browser does not open:** manually open `http://127.0.0.1:8765`.
 - **Hardware not detected:** reconnect USB/power, try another cable/adapter,
   then run `openmopa detect` again.
+- **Hardware job timed out / wedged controller:** the BJJCZ LMC board can
+  still enumerate on USB and accept connections while never answering reads.
+  This can happen if a hardware job is killed mid-USB-transfer and the board
+  waits forever for the rest of a packet. Fully power-cycle the machine:
+  turn it off, wait about 15 seconds, then turn it on again. Replugging USB is
+  not enough because the board is powered by the machine, not the USB cable.
+- **Red "Server connection lost" banner:** the UI server process died, usually
+  because its Terminal window was closed. Restart with
+  `./.venv/bin/python -m mopa_luiz ui`; the page reconnects automatically.
+- **Buttons doing nothing:** check the Activity panel in the bottom-right
+  corner. Every failure now surfaces an explicit reason there.
 
 Desktop / package icons are in `assets/icons/`:
 
@@ -134,6 +145,8 @@ touched.
 - Use red-light framing (Frame Once / Continuous Frame) before marking.
 - Raster engrave layers emit hatch-fill scan lines for closed regions.
   Open raster paths are skipped and reported.
+- Stop and timeout paths abort the board cleanly, including stopping
+  execution and closing MO, before the job process exits.
 
 ## UI features
 
@@ -295,6 +308,13 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 
 **Hardware reliability and diagnostics**
 
+- The UI polls `GET /api/health` every 3 seconds using pyusb enumeration only,
+  without opening the device, so it is safe during running jobs. If the server
+  is lost, a fixed red banner disables hardware buttons, shows the last-contact
+  counter and restart command, then reconnects automatically with a green flash
+  and re-syncs safety/config. The header chip updates between `JCZ/LMC USB
+  connected`, `Laser not detected — check power/USB`, and `Mock mode — no
+  hardware`.
 - One-shot frame and mark operations are submitted to `galvoplotter`'s
   spooler before waiting for motion completion.
 - Native JCZ/USB hardware calls for one-shot frame, mark, and first-burn tests
@@ -303,6 +323,14 @@ every visible raster layer with `output=yes`. The job summary surfaces a
   with `TypeError: Failed to fetch`.
 - Controller wait timeouts avoid killing the galvo spooler thread during
   post-job cleanup.
+- Job processes catch SIGTERM and abort the board cleanly before exiting. Hard
+  kill only happens after that graceful window.
+- Connects run under a 12 second deadline. If the interface claims but the
+  board does not answer, the error reports a wedged controller and tells you to
+  power-cycle the laser. Timeout errors carry the same power-cycle hint.
+- Frame and test-run requests clear a prior emergency stop and stop a running
+  frame loop before dispatching, so Stop no longer permanently blocks framing
+  until restart.
 - The Activity panel now displays JavaScript `Error` messages and non-JSON
   server responses instead of rendering empty `{}` objects.
 
@@ -318,7 +346,7 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-68 stdlib `unittest` cases. Covers:
+76 stdlib `unittest` cases. Covers:
 
 - machine profile parsing and missing-section error
 - DXF import: `LINE`, `LWPOLYLINE`, old-style `POLYLINE`/`VERTEX`/`SEQEND`,
@@ -342,6 +370,24 @@ every visible raster layer with `output=yes`. The job summary surfaces a
   blocked without ARM, layers allow power up to 100%, mark runs once per
   emitting layer, raster layer emits hatch lines for closed shapes, skips
   open paths, and hardware execution is patched at the isolated job boundary
+- end-to-end command-chain smoke tests over HTTP in mock mode: frame, mark
+  reaching the galvo layer, and `/api/health`
+- regression: frame works again after an emergency stop
+- wedged-board connect deadline raises the power-cycle diagnosis
+- graceful SIGTERM stop shuts the controller down cleanly
+
+### Mock mode (no hardware)
+
+`OPENMOPA_MOCK=1 openmopa ui` runs the whole chain against galvoplotter's
+`MockConnection`: HTTP routes, safety gates, job process spawning, and galvo
+command generation. No hardware is needed. Job results carry `"mock": true` so
+they cannot be mistaken for real runs.
+
+The same environment variable works with any command:
+
+```bash
+OPENMOPA_MOCK=1 openmopa ui
+```
 
 ## Roadmap
 
@@ -382,11 +428,15 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 │   ├── launcher.applescript    source for OpenMopa.app
 │   └── create_openmopa_assets.py
 └── tests/
+    ├── test_calibration.py
     ├── test_config.py
-    ├── test_safety.py
     ├── test_geometry.py
+    ├── test_importers.py
     ├── test_layers.py
-    └── test_planner.py
+    ├── test_live_chain.py
+    ├── test_planner.py
+    ├── test_raster.py
+    └── test_safety.py
 ```
 
 ## Files intentionally not committed
@@ -403,6 +453,7 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 - Protocol reference: Balor.
 - Pulse-width guardrail reference: JPT M7 pulse-width table.
 - Material library tools for later: `fibrelasertools`, `LaserParamsConverter`.
+- Known failure mode: wedged controller — see Troubleshooting.
 
 ## Known limitations
 
