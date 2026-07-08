@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -63,6 +64,55 @@ class MockModeTest(unittest.TestCase):
         finally:
             controller._sending = False
             controller.shutdown()
+
+
+class StubHangingController:
+    """Mimics a wedged board: claims the interface, then never answers."""
+
+    def __init__(self, **kwargs):
+        self._usb_log = kwargs.get("usb_log") or (lambda message: None)
+        self.mock = kwargs.get("mock", False)
+        self._sending = True
+        self.abort_requested = False
+
+    def connect_if_needed(self):
+        self._usb_log("Attempting to claim interface.")
+        self._usb_log("Interface claim: Success")
+        time.sleep(2.0)
+
+    def abort_connect(self):
+        self.abort_requested = True
+
+    def shutdown(self):
+        pass
+
+
+class WedgeProtectionTest(unittest.TestCase):
+    def test_connect_timeout_reports_wedged_board(self):
+        cfg = MarkConfig(path=Path("mem"), values={"FIELDSIZE": "200"})
+        params = JobParams(
+            text="",
+            power=1.0,
+            frequency_khz=30.0,
+            pulse_width_ns=200.0,
+            size_mm=10.0,
+            mark_speed=1000.0,
+        )
+        with mock.patch.object(live, "GalvoController", StubHangingController):
+            with self.assertRaises(RuntimeError) as ctx:
+                connect_controller(cfg, params, connect_timeout_s=0.2)
+        self.assertIn("Power-cycle", str(ctx.exception))
+        self.assertIn("not responding", str(ctx.exception))
+
+    def test_graceful_stop_shuts_down_active_controller(self):
+        controller = mock.Mock()
+        with mock.patch.object(live, "_ACTIVE_CONTROLLER", controller):
+            live._graceful_hardware_stop()
+        controller.shutdown.assert_called_once()
+
+    def test_graceful_stop_without_controller_is_a_no_op(self):
+        with mock.patch.object(live, "_ACTIVE_CONTROLLER", None):
+            live._graceful_hardware_stop()  # must not raise
 
 
 class UiChainSmokeTest(unittest.TestCase):

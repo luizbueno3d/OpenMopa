@@ -5,6 +5,7 @@ import json
 import multiprocessing as mp
 import os
 from pathlib import Path
+import signal
 import threading
 import time
 from typing import Any
@@ -23,6 +24,14 @@ HARDWARE_JOB_TIMEOUT_S = 60.0
 ACTIVE_HARDWARE_PROCESSES: dict[int, mp.Process] = {}
 ACTIVE_HARDWARE_LOCK = threading.Lock()
 STOP_REQUESTED = threading.Event()
+
+# Killing a hardware job mid-USB-transfer can leave the LMC board waiting for
+# the rest of a packet forever ("wedged": it connects but never replies, until
+# the machine is power-cycled). So job children abort the board cleanly on
+# SIGTERM, and connects run under a hard deadline with a wedge diagnosis.
+_ACTIVE_CONTROLLER: GalvoController | None = None
+GRACEFUL_STOP_TIMEOUT_S = 8.0
+CONNECT_TIMEOUT_S = 12.0
 
 CALIBRATION_PATH = Path(__file__).resolve().parent.parent / "calibration.json"
 # A galvo field calibration is a small trim, so clamp hard: a fat-fingered
@@ -117,7 +126,32 @@ class JobParams:
     mark_speed: float
 
 
+def _graceful_hardware_stop() -> None:
+    """Abort the board cleanly (stop execution, reset list, close MO). Never raises."""
+    controller = _ACTIVE_CONTROLLER
+    if controller is None:
+        return
+    # shutdown() can block if the board is mute; a watchdog guarantees exit.
+    watchdog = threading.Timer(GRACEFUL_STOP_TIMEOUT_S, lambda: os._exit(137))
+    watchdog.daemon = True
+    watchdog.start()
+    try:
+        controller.shutdown()
+    except Exception:
+        pass
+    finally:
+        watchdog.cancel()
+
+
+def _sigterm_abort_handler(signum, frame) -> None:
+    try:
+        _graceful_hardware_stop()
+    finally:
+        os._exit(143)
+
+
 def _hardware_job_entry(conn, function_name: str, args: tuple, kwargs: dict) -> None:
+    signal.signal(signal.SIGTERM, _sigterm_abort_handler)
     try:
         result = globals()[function_name](*args, **kwargs)
         conn.send({"ok": True, "result": result})
@@ -146,9 +180,17 @@ def run_hardware_job(function_name: str, *args, timeout_s: float = HARDWARE_JOB_
         if parent_conn.poll(timeout_s):
             message = parent_conn.recv()
         else:
+            # SIGTERM lets the child abort the board cleanly before exiting;
+            # a hard kill mid-USB-transfer wedges the controller firmware.
             process.terminate()
-            process.join(3.0)
-            raise TimeoutError(f"hardware job {function_name} timed out after {timeout_s:.0f}s")
+            process.join(GRACEFUL_STOP_TIMEOUT_S + 2.0)
+            if process.is_alive():
+                process.kill()
+                process.join(3.0)
+            raise TimeoutError(
+                f"hardware job {function_name} timed out after {timeout_s:.0f}s. "
+                "If the laser stopped responding, power-cycle the machine before retrying."
+            )
     finally:
         parent_conn.close()
         with ACTIVE_HARDWARE_LOCK:
@@ -173,7 +215,9 @@ def stop_active_hardware_jobs() -> dict[str, Any]:
             process.terminate()
             stopped += 1
     for process in processes:
-        process.join(1.0)
+        # Give the SIGTERM handler time to abort the board cleanly (its own
+        # watchdog guarantees exit within GRACEFUL_STOP_TIMEOUT_S).
+        process.join(GRACEFUL_STOP_TIMEOUT_S + 2.0)
         if process.is_alive():
             process.kill()
             process.join(1.0)
@@ -261,7 +305,9 @@ def text_segments(text: str, size_mm: float) -> list[tuple[tuple[float, float], 
     return segments
 
 
-def connect_controller(cfg: MarkConfig, params: JobParams) -> GalvoController:
+def connect_controller(
+    cfg: MarkConfig, params: JobParams, connect_timeout_s: float = CONNECT_TIMEOUT_S
+) -> GalvoController:
     field_size = effective_field_size(cfg)
     usb_events: list[str] = []
     controller = GalvoController(
@@ -277,20 +323,41 @@ def connect_controller(cfg: MarkConfig, params: JobParams) -> GalvoController:
         usb_log=usb_events.append,
     )
     apply_wait_timeouts(controller)
-    try:
-        controller.connect_if_needed()
-    except Exception as exc:
+    connect_errors: list[BaseException] = []
+
+    def _connect() -> None:
+        try:
+            controller.connect_if_needed()
+        except BaseException as exc:  # surfaced below with the usb_log tail
+            connect_errors.append(exc)
+
+    # A wedged board can keep galvoplotter's retry loop spinning far past its
+    # own attempt limit (its USB resets knock the device off the bus
+    # mid-retry), so enforce a hard deadline of our own.
+    worker = threading.Thread(target=_connect, daemon=True)
+    worker.start()
+    worker.join(connect_timeout_s)
+    if worker.is_alive() or connect_errors:
+        controller.abort_connect()
         controller._sending = False  # make shutdown() safe: no further USB writes
         try:
             controller.shutdown()
         except Exception:
             pass
-        detail = "; ".join(usb_events[-4:]) or str(exc)
+        cause = connect_errors[0] if connect_errors else None
+        detail = "; ".join(usb_events[-4:]) or (str(cause) if cause else "connect timed out")
+        if any("claim: Success" in event for event in usb_events):
+            hint = (
+                "The board connects but is not responding (wedged controller). "
+                "Power-cycle the laser (full power off, wait 15s, power on), then retry."
+            )
+        else:
+            hint = "Check power, USB cable, and the Detect panel, then retry."
         raise RuntimeError(
-            "cannot reach the JCZ/LMC laser over USB "
-            f"({type(exc).__name__}). Check power, USB cable, and the Detect "
-            f"panel, then retry. Log: {detail}"
-        ) from exc
+            f"cannot reach the JCZ/LMC laser over USB. {hint} Log: {detail}"
+        ) from cause
+    global _ACTIVE_CONTROLLER
+    _ACTIVE_CONTROLLER = controller
     return controller
 
 
