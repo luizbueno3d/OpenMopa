@@ -4,6 +4,7 @@ __pycache__/
 .DS_Store
 .mopa-luiz-ui.log
 layer_settings.json
+workspace.json
 calibration.json
 markcfg*
 *.cor

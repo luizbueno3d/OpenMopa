@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
+import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -41,6 +43,9 @@ from .safety import evaluate_emission
 
 FRAME_LOOP = FrameLoop()
 LAYER_SETTINGS_PATH = Path(__file__).resolve().parent.parent / "layer_settings.json"
+WORKSPACE_PATH = Path(__file__).resolve().parent.parent / "workspace.json"
+WORKSPACE_MAX_OBJECTS = 3000
+WORKSPACE_MAX_TOTAL_POINTS = 500_000
 
 
 def load_saved_layers() -> list[dict[str, object]]:
@@ -62,6 +67,83 @@ def save_layers(payload: object) -> list[dict[str, object]]:
         raise ValueError("at least one layer is required")
     LAYER_SETTINGS_PATH.write_text(json.dumps({"layers": layers}, indent=2) + "\n", encoding="utf-8")
     return layers
+
+
+def _finite_float(value: object, default: float | None = None) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number != number or number in (float("inf"), float("-inf")):
+        return default
+    return number
+
+
+def sanitize_workspace_objects(payload: object) -> list[dict[str, object]]:
+    """Validate client objects down to the persisted shape. Raises ValueError."""
+    if not isinstance(payload, list):
+        raise ValueError("objects must be a list")
+    if len(payload) > WORKSPACE_MAX_OBJECTS:
+        raise ValueError("workspace too large")
+
+    objects: list[dict[str, object]] = []
+    total_points = 0
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        polylines: list[list[list[float]]] = []
+        for polyline in item.get("polylines") if isinstance(item.get("polylines"), list) else []:
+            if not isinstance(polyline, list):
+                continue
+            clean_polyline: list[list[float]] = []
+            for point in polyline:
+                if not isinstance(point, list) or len(point) < 2:
+                    continue
+                x = _finite_float(point[0])
+                y = _finite_float(point[1])
+                if x is None or y is None:
+                    continue
+                clean_polyline.append([x, y])
+            if len(clean_polyline) >= 2:
+                polylines.append(clean_polyline)
+                total_points += len(clean_polyline)
+                if total_points > WORKSPACE_MAX_TOTAL_POINTS:
+                    raise ValueError("workspace too large")
+        if not polylines:
+            continue
+        objects.append({
+            "name": item["name"][:200] if isinstance(item.get("name"), str) else "object",
+            "layer_id": item.get("layer_id") if isinstance(item.get("layer_id"), str) else "vector-engrave",
+            "polylines": polylines,
+            "pointCount": sum(len(polyline) for polyline in polylines),
+            "x": _finite_float(item.get("x"), 0.0),
+            "y": _finite_float(item.get("y"), 0.0),
+            "scale": _finite_float(item.get("scale"), 1.0),
+            "rotation": _finite_float(item.get("rotation"), 0.0),
+        })
+    return objects
+
+
+def load_workspace() -> dict[str, object]:
+    try:
+        with WORKSPACE_PATH.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return {"objects": sanitize_workspace_objects(data.get("objects")), "saved_at": data.get("saved_at")}
+    except Exception:
+        return {"objects": [], "saved_at": None}
+
+
+def save_workspace(payload: object) -> dict[str, object]:
+    objects = sanitize_workspace_objects(payload)
+    data = {
+        "version": 1,
+        "saved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "objects": objects,
+    }
+    tmp = WORKSPACE_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, WORKSPACE_PATH)
+    return {"ok": True, "objects": len(objects), "path": str(WORKSPACE_PATH)}
 
 
 HTML = """<!doctype html>
@@ -766,6 +848,9 @@ HTML = """<!doctype html>
     let redoStack = [];
     let transformEditActive = false;
     let transformEditBaseline = null;
+    let workspaceSaveTimer = null;
+    let lastWorkspaceJson = null;
+    let workspaceReady = false;
     const MAX_HISTORY = 30;
     const canvas = document.getElementById('stage');
     const ctx = canvas.getContext('2d');
@@ -1149,6 +1234,7 @@ HTML = """<!doctype html>
       updateZoomChip();
       updateSummary();
       updateUndoRedoButtons();
+      scheduleWorkspaceSave();
     }
     function renderObjects() {
       const list = document.getElementById('objects');
@@ -2193,6 +2279,31 @@ HTML = """<!doctype html>
         scInput.value = String(data.SCALE_CORRECTION);
       }
     }
+    function scheduleWorkspaceSave() {
+      if (!workspaceReady) return;
+      clearTimeout(workspaceSaveTimer);
+      workspaceSaveTimer = setTimeout(async () => {
+        const body = JSON.stringify({ objects });
+        if (body === lastWorkspaceJson) return;
+        try {
+          await getJson('/api/workspace/save', {
+            method: 'POST', headers: {'content-type': 'application/json'}, body,
+          });
+          lastWorkspaceJson = body;
+        } catch (error) { console.warn('workspace autosave failed', error); }
+      }, 1200);
+    }
+    async function loadWorkspace() {
+      try {
+        const data = await getJson('/api/workspace');
+        if (Array.isArray(data.objects) && data.objects.length) {
+          objects.splice(0, objects.length, ...data.objects);
+          clearSelection();
+        }
+        lastWorkspaceJson = JSON.stringify({ objects });
+      } catch (error) { console.warn('workspace restore failed', error); }
+      workspaceReady = true;
+    }
     async function loadSafety() {
       safety = await getJson('/api/safety');
       const pill = document.getElementById('powerMode');
@@ -2239,7 +2350,7 @@ HTML = """<!doctype html>
       });
     })();
 
-    loadSafety().then(loadLayers).then(loadConfig).then(refreshDetect).then(render).then(heartbeat);
+    loadSafety().then(loadLayers).then(loadConfig).then(loadWorkspace).then(refreshDetect).then(render).then(heartbeat);
   </script>
 </body>
 </html>
@@ -2310,6 +2421,9 @@ class UiHandler(BaseHTTPRequestHandler):
         if path == "/api/layers":
             self.send_json(HTTPStatus.OK, {"layers": load_saved_layers(), "path": str(LAYER_SETTINGS_PATH)})
             return
+        if path == "/api/workspace":
+            self.send_json(HTTPStatus.OK, load_workspace())
+            return
         if path == "/api/profile/inspect":
             self.send_json(HTTPStatus.OK, inspect_profile_data(load_markcfg(self.markcfg)))
             return
@@ -2362,6 +2476,9 @@ class UiHandler(BaseHTTPRequestHandler):
             if path == "/api/layers/save":
                 layers = save_layers(payload.get("layers"))
                 self.send_json(HTTPStatus.OK, {"ok": True, "layers": layers, "path": str(LAYER_SETTINGS_PATH)})
+                return
+            if path == "/api/workspace/save":
+                self.send_json(HTTPStatus.OK, save_workspace(payload.get("objects")))
                 return
             if path == "/api/calibration/save":
                 value = save_scale_correction(payload.get("scale_correction"))
