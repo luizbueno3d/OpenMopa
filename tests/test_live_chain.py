@@ -145,6 +145,17 @@ class UiChainSmokeTest(unittest.TestCase):
         except urllib.error.HTTPError as error:
             return error.code, json.loads(error.read() or b"{}")
 
+    def test_health_endpoint_is_fast_and_typed(self):
+        request = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/health")
+        started = time.monotonic()
+        with urllib.request.urlopen(request, timeout=10) as response:
+            body = json.loads(response.read())
+        self.assertLess(time.monotonic() - started, 5.0)
+        self.assertTrue(body["ok"])
+        self.assertIn("laser_connected", body)
+        self.assertIn("frame_loop_running", body)
+        self.assertTrue(body["mock"])
+
     def test_frame_survives_stop_click(self):
         status, body = self.post("/api/frame", {"objects": [], "layers": [], "live": LIVE})
         self.assertEqual(status, 200, body)

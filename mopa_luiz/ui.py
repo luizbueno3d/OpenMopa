@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .cli import build_test_box_plan, config_summary, detect_report, load_markcfg
+from .cli import build_test_box_plan, config_summary, detect_report, load_markcfg, pyusb_probe
 from .geometry import bounding_box, join_lines
 from .importers import import_geometry
 from .raster import hatch_polylines
@@ -33,6 +33,7 @@ from .live import (
     stop_active_hardware_jobs,
     load_scale_correction,
     save_scale_correction,
+    mock_mode,
 )
 from .profile import inspect as inspect_profile_data
 from .safety import evaluate_emission
@@ -527,9 +528,25 @@ HTML = """<!doctype html>
       aside, .right { border: 0; }
       .stageWrap { min-height: 620px; }
     }
+    #connBanner {
+      position: fixed; top: -80px; left: 0; right: 0; z-index: 999;
+      padding: 12px 20px; text-align: center; font-weight: 700;
+      transition: top .25s ease; box-shadow: 0 6px 24px rgba(0,0,0,.45);
+    }
+    #connBanner.offline { top: 0; background: var(--bad); color: #fff; }
+    #connBanner.back { top: 0; background: var(--good); color: #06271c; }
+    #connBanner .sub { display: block; font-weight: 400; font-size: 12.5px; opacity: .92; margin-top: 3px; }
+    #connBanner .pulse { display: inline-block; animation: connPulse 1.2s ease-in-out infinite; }
+    @keyframes connPulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+    body.serverOffline #plan, body.serverOffline #frame, body.serverOffline #frameStart,
+    body.serverOffline #frameStop, body.serverOffline #mark, body.serverOffline #dotTest,
+    body.serverOffline #lineTest, body.serverOffline #stopEngraving {
+      pointer-events: none; opacity: .4;
+    }
   </style>
 </head>
 <body>
+  <div id="connBanner" role="alert"></div>
   <header>
     <h1>OpenMopa</h1>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -2097,12 +2114,59 @@ HTML = """<!doctype html>
       } catch {}
     }
 
+    function setLaserChip(connected, mockActive) {
+      const status = document.getElementById('status');
+      status.classList.toggle('ok', Boolean(connected) || Boolean(mockActive));
+      status.querySelector('span:last-child').textContent = mockActive
+        ? 'Mock mode — no hardware'
+        : (connected ? 'JCZ/LMC USB connected' : 'Laser not detected — check power/USB');
+    }
     async function refreshDetect() {
       const data = await getJson('/api/detect');
-      const status = document.getElementById('status');
-      status.classList.toggle('ok', Boolean(data.connected));
-      status.querySelector('span:last-child').textContent = data.connected ? 'JCZ/LMC USB connected' : 'JCZ/LMC USB not visible';
+      setLaserChip(data.connected, false);
     }
+
+    // --- Server heartbeat: live connection banner + laser presence ---
+    const HEALTH_INTERVAL_MS = 3000;
+    let serverOnline = true;
+    let lastServerContact = Date.now();
+    function setServerState(online) {
+      const banner = document.getElementById('connBanner');
+      if (online) {
+        lastServerContact = Date.now();
+        if (!serverOnline) {
+          serverOnline = true;
+          document.body.classList.remove('serverOffline');
+          banner.className = 'back';
+          banner.innerHTML = 'Server reconnected — controls re-enabled';
+          setTimeout(() => { if (serverOnline) banner.className = ''; }, 2500);
+          loadSafety(); loadConfig();  // re-sync state across a server restart
+        }
+        return;
+      }
+      if (serverOnline) {
+        serverOnline = false;
+        document.body.classList.add('serverOffline');
+        banner.className = 'offline';
+        banner.innerHTML = '<span class="pulse">&#9888;</span> Server connection lost — hardware controls disabled, retrying&hellip;' +
+          '<span class="sub">The OpenMopa server is not responding (its Terminal window may have been closed). ' +
+          'Restart it, e.g. <code>./.venv/bin/python -m mopa_luiz ui</code> — last contact <span id="connLastSeen">0s</span> ago.</span>';
+      }
+      const seen = document.getElementById('connLastSeen');
+      if (seen) seen.textContent = Math.max(0, Math.round((Date.now() - lastServerContact) / 1000)) + 's';
+    }
+    async function heartbeat() {
+      try {
+        const res = await fetch('/api/health', { cache: 'no-store', signal: AbortSignal.timeout(2500) });
+        if (!res.ok) throw new Error('http ' + res.status);
+        const data = await res.json();
+        setServerState(true);
+        setLaserChip(data.laser_connected, data.mock);
+      } catch {
+        setServerState(false);
+      }
+    }
+    setInterval(heartbeat, HEALTH_INTERVAL_MS);
     function applyFieldCalibration(nominalMm, correction) {
       if (Number.isFinite(nominalMm) && nominalMm > 0) fieldNominalMm = nominalMm;
       const factor = Number.isFinite(correction) && correction > 0 ? correction : 1;
@@ -2175,7 +2239,7 @@ HTML = """<!doctype html>
       });
     })();
 
-    loadSafety().then(loadLayers).then(loadConfig).then(refreshDetect).then(render);
+    loadSafety().then(loadLayers).then(loadConfig).then(refreshDetect).then(render).then(heartbeat);
   </script>
 </body>
 </html>
@@ -2205,6 +2269,20 @@ class UiHandler(BaseHTTPRequestHandler):
             self.send_header("content-length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+            return
+        if path == "/api/health":
+            # Heartbeat for the UI: must stay fast and never raise. pyusb
+            # enumeration only — no device open, safe during running jobs.
+            try:
+                laser = bool(pyusb_probe().get("devices"))
+            except Exception:
+                laser = False
+            self.send_json(HTTPStatus.OK, {
+                "ok": True,
+                "laser_connected": laser,
+                "frame_loop_running": FRAME_LOOP.running,
+                "mock": mock_mode(),
+            })
             return
         if path == "/api/detect":
             self.send_json(HTTPStatus.OK, detect_report())
