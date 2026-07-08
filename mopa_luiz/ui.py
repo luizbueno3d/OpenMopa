@@ -31,6 +31,8 @@ from .live import (
     clear_stop_request,
     stop_requested,
     stop_active_hardware_jobs,
+    load_scale_correction,
+    save_scale_correction,
 )
 from .profile import inspect as inspect_profile_data
 from .safety import evaluate_emission
@@ -617,7 +619,7 @@ HTML = """<!doctype html>
           <button id="undoBtn">Undo</button>
           <button id="redoBtn">Redo</button>
         </div>
-        <div class="toolchip">Field 200 mm</div>
+        <div class="toolchip" id="fieldChip">Field 200 mm</div>
         <div class="toolchip" id="selection">No selection</div>
         <div class="toolchip" id="jobStats">0 paths</div>
         <div class="toolchip" id="zoomChip">100%
@@ -651,6 +653,10 @@ HTML = """<!doctype html>
           <label><input id="selectedOnly" type="checkbox"> Selected only</label>
           <label>Repeat<input id="markRepeat" type="number" min="1" max="999" step="1" value="1"></label>
         </div>
+        <div class="grid2">
+          <label><input id="mirrorX" type="checkbox"> Mirror horizontally</label>
+          <label><input id="mirrorY" type="checkbox"> Mirror vertically</label>
+        </div>
         <div class="buttons">
           <button id="plan">Plan Job</button>
           <button class="secondary" id="frame">Frame Once</button>
@@ -663,6 +669,16 @@ HTML = """<!doctype html>
       <section>
         <details>
           <summary><h2>Advanced</h2></summary>
+          <div class="info">
+            <strong>Scale calibration</strong>
+            Corrects mark size when the engraved result differs from the design.
+            Set this to (measured &divide; intended) from a test square &mdash; e.g. a
+            50 mm square that comes out 59.17 mm &rarr; 1.1834. Applied to every job;
+            the canvas &ldquo;Field&rdquo; readout shows the corrected work area.
+          </div>
+          <div class="grid2">
+            <label>Scale correction<input id="scaleCorrection" type="number" min="0.5" max="2" step="0.0001" value="1"></label>
+          </div>
           <div class="info">
             <strong>Legacy frame parameters</strong>
             These values are only for red-light framing / planning defaults, not for normal layer marking.
@@ -711,7 +727,8 @@ HTML = """<!doctype html>
   <div id="layerMenu" class="contextMenu"></div>
 
   <script>
-    const FIELD_MM = 200;
+    let FIELD_MM = 200;
+    let fieldNominalMm = 200;
     const PULSES = [2,4,6,9,13,20,30,45,55,60,80,100,150,200,250,300,350,400,450,500];
     const objects = [];
     let layers = [];
@@ -1955,15 +1972,23 @@ HTML = """<!doctype html>
       } catch (error) { show(error); }
     });
 
+    function mirrorPolylines(polys, mx, my) {
+      if (!mx && !my) return polys;
+      const sx = mx ? -1 : 1;
+      const sy = my ? -1 : 1;
+      return polys.map(poly => poly.map(pt => [pt[0] * sx, pt[1] * sy]));
+    }
     function buildJobPayload() {
       const selectedOnly = document.getElementById('selectedOnly').checked;
       const selectedIndexes = new Set(selectionList());
       const jobObjects = selectedOnly ? objects.filter((_, index) => selectedIndexes.has(index)) : objects;
+      const mx = document.getElementById('mirrorX').checked;
+      const my = document.getElementById('mirrorY').checked;
       return {
         objects: jobObjects.map(obj => ({
           name: obj.name,
           layer_id: obj.layer_id,
-          polylines: objectTransformedPolylines(obj),
+          polylines: mirrorPolylines(objectTransformedPolylines(obj), mx, my),
         })),
         layers: layers.map(layer => ({...layer})),
         live: liveParams(),
@@ -2078,6 +2103,13 @@ HTML = """<!doctype html>
       status.classList.toggle('ok', Boolean(data.connected));
       status.querySelector('span:last-child').textContent = data.connected ? 'JCZ/LMC USB connected' : 'JCZ/LMC USB not visible';
     }
+    function applyFieldCalibration(nominalMm, correction) {
+      if (Number.isFinite(nominalMm) && nominalMm > 0) fieldNominalMm = nominalMm;
+      const factor = Number.isFinite(correction) && correction > 0 ? correction : 1;
+      FIELD_MM = fieldNominalMm * factor;
+      const chip = document.getElementById('fieldChip');
+      if (chip) chip.textContent = `Field ${Number.isInteger(FIELD_MM) ? FIELD_MM : FIELD_MM.toFixed(2)} mm`;
+    }
     async function loadConfig() {
       const data = await getJson('/api/config');
       const config = document.getElementById('config');
@@ -2088,6 +2120,14 @@ HTML = """<!doctype html>
         row.innerHTML = `<span>${key}</span><strong>${data[key] ?? ''}</strong>`;
         config.appendChild(row);
       });
+      // Field size x scale correction is the single source of truth for the
+      // work area: the canvas must match what the mark path uses so the screen
+      // and the hardware can never drift apart.
+      applyFieldCalibration(Number(data.FIELDSIZE), Number(data.SCALE_CORRECTION));
+      const scInput = document.getElementById('scaleCorrection');
+      if (scInput && Number.isFinite(Number(data.SCALE_CORRECTION))) {
+        scInput.value = String(data.SCALE_CORRECTION);
+      }
     }
     async function loadSafety() {
       safety = await getJson('/api/safety');
@@ -2107,6 +2147,33 @@ HTML = """<!doctype html>
     document.getElementById('inspectProfile').addEventListener('click', async () => {
       try { show(await getJson('/api/profile/inspect')); } catch (error) { show(error); }
     });
+
+    (function initMirror() {
+      const mx = document.getElementById('mirrorX');
+      const my = document.getElementById('mirrorY');
+      try {
+        mx.checked = localStorage.getItem('openmopa.mirrorX') === '1';
+        my.checked = localStorage.getItem('openmopa.mirrorY') === '1';
+      } catch {}
+      mx.addEventListener('change', () => { try { localStorage.setItem('openmopa.mirrorX', mx.checked ? '1' : '0'); } catch {} });
+      my.addEventListener('change', () => { try { localStorage.setItem('openmopa.mirrorY', my.checked ? '1' : '0'); } catch {} });
+    })();
+
+    (function initScaleCorrection() {
+      const input = document.getElementById('scaleCorrection');
+      if (!input) return;
+      input.addEventListener('change', async () => {
+        let value = Number(String(input.value).replace(',', '.'));
+        if (!Number.isFinite(value) || value < 0.5 || value > 2) value = 1;
+        try {
+          const res = await postJson('/api/calibration/save', { scale_correction: value });
+          input.value = String(res.scale_correction);
+          applyFieldCalibration(fieldNominalMm, Number(res.scale_correction));
+          render();
+          show(`Scale correction saved: ${res.scale_correction} (effective field ${(fieldNominalMm * res.scale_correction).toFixed(2)} mm)`);
+        } catch (error) { show(error); }
+      });
+    })();
 
     loadSafety().then(loadLayers).then(loadConfig).then(refreshDetect).then(render);
   </script>
@@ -2143,7 +2210,9 @@ class UiHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.OK, detect_report())
             return
         if path == "/api/config":
-            self.send_json(HTTPStatus.OK, config_summary(load_markcfg(self.markcfg)))
+            summary = config_summary(load_markcfg(self.markcfg))
+            summary["SCALE_CORRECTION"] = load_scale_correction()
+            self.send_json(HTTPStatus.OK, summary)
             return
         if path == "/api/board":
             self.send_json(HTTPStatus.OK, read_board_status())
@@ -2215,6 +2284,10 @@ class UiHandler(BaseHTTPRequestHandler):
             if path == "/api/layers/save":
                 layers = save_layers(payload.get("layers"))
                 self.send_json(HTTPStatus.OK, {"ok": True, "layers": layers, "path": str(LAYER_SETTINGS_PATH)})
+                return
+            if path == "/api/calibration/save":
+                value = save_scale_correction(payload.get("scale_correction"))
+                self.send_json(HTTPStatus.OK, {"ok": True, "scale_correction": value})
                 return
 
             cfg = load_markcfg(self.markcfg)

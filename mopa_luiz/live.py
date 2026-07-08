@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import multiprocessing as mp
 from pathlib import Path
 import threading
@@ -21,6 +22,43 @@ HARDWARE_JOB_TIMEOUT_S = 60.0
 ACTIVE_HARDWARE_PROCESSES: dict[int, mp.Process] = {}
 ACTIVE_HARDWARE_LOCK = threading.Lock()
 STOP_REQUESTED = threading.Event()
+
+CALIBRATION_PATH = Path(__file__).resolve().parent.parent / "calibration.json"
+# A galvo field calibration is a small trim, so clamp hard: a fat-fingered
+# value must never wildly mis-size a laser job.
+SCALE_CORRECTION_MIN = 0.5
+SCALE_CORRECTION_MAX = 2.0
+
+
+def load_scale_correction() -> float:
+    """Persisted mark-size correction (measured / intended). 1.0 = no correction."""
+    try:
+        with CALIBRATION_PATH.open("r", encoding="utf-8") as fh:
+            value = float(json.load(fh).get("scale_correction", 1.0))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return 1.0
+    if not value > 0:
+        return 1.0
+    return max(SCALE_CORRECTION_MIN, min(SCALE_CORRECTION_MAX, value))
+
+
+def save_scale_correction(value: object) -> float:
+    """Persist the mark-size correction factor, rejecting out-of-band values."""
+    number = float(value)  # raises TypeError/ValueError for None/junk; caller reports it
+    if not SCALE_CORRECTION_MIN <= number <= SCALE_CORRECTION_MAX:
+        raise ValueError(
+            f"scale_correction must be between {SCALE_CORRECTION_MIN} and {SCALE_CORRECTION_MAX}"
+        )
+    CALIBRATION_PATH.write_text(
+        json.dumps({"scale_correction": number}, indent=2) + "\n", encoding="utf-8"
+    )
+    return number
+
+
+def effective_field_size(cfg: MarkConfig) -> float:
+    """Field size used for every mm<->galvo conversion: nominal x calibration."""
+    base = cfg.get_float("FIELDSIZE", 200.0) or 200.0
+    return base * load_scale_correction()
 
 FONT_5X7 = {
     " ": ("00000", "00000", "00000", "00000", "00000", "00000", "00000"),
@@ -218,7 +256,7 @@ def text_segments(text: str, size_mm: float) -> list[tuple[tuple[float, float], 
 
 
 def connect_controller(cfg: MarkConfig, params: JobParams) -> GalvoController:
-    field_size = cfg.get_float("FIELDSIZE", 200.0) or 200.0
+    field_size = effective_field_size(cfg)
     controller = GalvoController(
         source="fiber",
         power=params.power,
@@ -285,7 +323,7 @@ def frame_box(cfg: MarkConfig, params: JobParams) -> dict[str, Any]:
         operation="frame_only",
         paths_count=1,
     ).raise_if_blocked()
-    field_size = cfg.get_float("FIELDSIZE", 200.0) or 200.0
+    field_size = effective_field_size(cfg)
     points = box_points(params.size_mm, field_size)
     controller = connect_controller(cfg, params)
     try:
@@ -333,7 +371,7 @@ class FrameLoop:
         ).raise_if_blocked()
         with self._lock:
             self.stop()
-            field_size = cfg.get_float("FIELDSIZE", 200.0) or 200.0
+            field_size = effective_field_size(cfg)
             job_paths = sanitize_polylines(polylines, field_size) if polylines else [box_points(params.size_mm, field_size)]
             self._points = [pt for path in job_paths for pt in path]
             controller = connect_controller(cfg, params)
@@ -398,7 +436,7 @@ def mark_box(cfg: MarkConfig, params: JobParams, arm: bool, confirm: str) -> dic
         size_mm=params.size_mm,
         arm=True,
     )
-    field_size = cfg.get_float("FIELDSIZE", 200.0) or 200.0
+    field_size = effective_field_size(cfg)
     points = box_points(params.size_mm, field_size)
     controller = connect_controller(cfg, params)
     try:
@@ -438,7 +476,7 @@ def frame_polylines(cfg: MarkConfig, params: JobParams, polylines: list[list[lis
         operation="frame_only",
         paths_count=len(polylines or []),
     ).raise_if_blocked()
-    field_size = cfg.get_float("FIELDSIZE", 200.0) or 200.0
+    field_size = effective_field_size(cfg)
     job_paths = sanitize_polylines(polylines, field_size)
     controller = connect_controller(cfg, params)
     try:
@@ -483,7 +521,7 @@ def mark_polylines(
         paths_count=len(polylines or []),
     )
     safety.raise_if_blocked()
-    field_size = cfg.get_float("FIELDSIZE", 200.0) or 200.0
+    field_size = effective_field_size(cfg)
     job_paths = sanitize_polylines(polylines, field_size)
     controller = connect_controller(cfg, params)
     try:
