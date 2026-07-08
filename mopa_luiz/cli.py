@@ -80,8 +80,28 @@ def load_markcfg(path: Path) -> MarkConfig:
     return MarkConfig(path=path, values=dict(parser["LMC_CFG"]))
 
 
-def nearest_pulse_width(value: float) -> int:
-    return min(JPT_M7_PULSE_WIDTHS_NS, key=lambda candidate: abs(candidate - value))
+def pulse_width_table(cfg: MarkConfig | None) -> tuple[int, ...]:
+    """Pulse widths (ns) this machine accepts.
+
+    Profiles may override the default JPT M7 table with a PULSEWIDTHS key
+    ([LMC_CFG], comma-separated integer nanoseconds). Invalid or empty
+    values fall back to the M7 table so safety never loosens silently.
+    """
+    if cfg is None or "PULSEWIDTHS" not in cfg.values:
+        return JPT_M7_PULSE_WIDTHS_NS
+    try:
+        values = tuple(
+            sorted({int(float(part.strip())) for part in cfg.values["PULSEWIDTHS"].split(",")})
+        )
+    except (TypeError, ValueError):
+        return JPT_M7_PULSE_WIDTHS_NS
+    if not values or any(value <= 0 for value in values):
+        return JPT_M7_PULSE_WIDTHS_NS
+    return values
+
+
+def nearest_pulse_width(value: float, table: tuple[int, ...] = JPT_M7_PULSE_WIDTHS_NS) -> int:
+    return min(table, key=lambda candidate: abs(candidate - value))
 
 
 def frequency_to_period(frequency_khz: float, base: float = 20000.0) -> int:
@@ -226,7 +246,8 @@ def build_test_box_plan(
         )
     if power < 0.0 or power > 100.0:
         raise ValueError("test power must be between 0% and 100%.")
-    snapped_pw = nearest_pulse_width(pulse_width_ns)
+    table = pulse_width_table(cfg)
+    snapped_pw = nearest_pulse_width(pulse_width_ns, table)
     commands = [
         {
             "name": "listMarkCurrent",

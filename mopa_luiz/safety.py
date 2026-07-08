@@ -6,7 +6,8 @@ or one of its narrower wrappers before contacting the controller.
 What this module enforces today:
   - Power must lie within the laser's electrical 0..100% range.
   - Frequency must lie within the machine profile's MINPWMFREQ / MAXPWMFREQ bounds.
-  - Pulse width must land on the JPT M7 table (within rounding).
+  - Pulse width must land on the machine profile's PULSEWIDTHS table,
+    defaulting to the JPT M7 table (within rounding).
   - Emission paths must carry an explicit `arm=True` and the literal
     confirmation token "ARM".
   - The job must have at least one markable path.
@@ -19,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .cli import JPT_M7_PULSE_WIDTHS_NS, MarkConfig, nearest_pulse_width
+from .cli import MarkConfig, nearest_pulse_width, pulse_width_table
 
 
 ARM_TOKEN = "ARM"
@@ -78,11 +79,12 @@ def evaluate_emission(
                 f"{min_freq_hz}..{max_freq_hz} Hz"
             )
 
-    if pulse_width_ns not in JPT_M7_PULSE_WIDTHS_NS:
-        snapped = nearest_pulse_width(pulse_width_ns)
+    table = pulse_width_table(cfg)
+    if pulse_width_ns not in table:
+        snapped = nearest_pulse_width(pulse_width_ns, table)
         if abs(snapped - pulse_width_ns) > 0.5:
             errors.append(
-                f"pulse width {pulse_width_ns} ns not in JPT M7 table "
+                f"pulse width {pulse_width_ns} ns not in machine pulse-width table "
                 f"(nearest {snapped} ns)"
             )
         else:
@@ -133,10 +135,11 @@ def validate_layer_settings(
                 f"layer frequency {requested_freq_hz:.0f} Hz outside machine profile "
                 f"{min_freq_hz}..{max_freq_hz} Hz"
             )
-    if pulse_width_ns not in JPT_M7_PULSE_WIDTHS_NS:
-        snapped = nearest_pulse_width(pulse_width_ns)
+    table = pulse_width_table(cfg)
+    if pulse_width_ns not in table:
+        snapped = nearest_pulse_width(pulse_width_ns, table)
         if abs(snapped - pulse_width_ns) > 0.5:
             errors.append(
-                f"layer pulse width {pulse_width_ns} ns not in JPT M7 table"
+                f"layer pulse width {pulse_width_ns} ns not in machine pulse-width table"
             )
     return errors

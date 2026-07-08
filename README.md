@@ -32,6 +32,9 @@ python -m pip install -e ".[hardware]"
 openmopa ui
 ```
 
+Dependencies (`galvoplotter`, `pyusb`) install automatically with
+`pip install -e ".[hardware]"`.
+
 Open `http://127.0.0.1:8765` in Chrome or Safari.
 
 To stop OpenMopa, return to the Terminal window and press `Control-C`.
@@ -70,7 +73,8 @@ The launcher opens a Terminal window for the server and opens your browser at
 `http://127.0.0.1:8765`. If the server is already running, it opens the browser
 without starting a second server.
 
-You can drag the generated `OpenMopa.app` to the Dock or copy it to
+`OpenMopa.app` must stay in the project folder because it finds the project
+relative to its own location. Drag it to the Dock rather than copying it to
 `/Applications/`.
 
 ## Interface preview
@@ -121,8 +125,9 @@ All laser-emission paths flow through one safety gate before the controller is
 touched.
 
 - Power may be set anywhere in the laser's electrical 0..100% range.
-- Pulse width is snapped to the guarded JPT M7 table; values that don't
-  land on the table within rounding are rejected.
+- Pulse width is snapped to the machine profile's pulse-width table (JPT M7
+  table by default); values that don't land on the table within rounding are
+  rejected.
 - Frequency must lie within the machine profile's `MINPWMFREQ` / `MAXPWMFREQ` bounds.
 - Live marking still requires typing `ARM` in the UI plus a final
   confirmation in the modal.
@@ -160,6 +165,15 @@ Run with the generated `.app` (above) or with
 - Collapse either sidebar with the in-canvas edge buttons.
 - `Undo` / `Redo` buttons plus `Cmd-Z` / `Shift-Cmd-Z` for geometry edits.
 - `f` fits to objects, `0` resets to 100% / field view.
+
+**Calibration**
+
+- Advanced → `Scale correction` stores measured÷intended from a test square
+  in a machine-local, git-ignored `calibration.json`. The correction scales
+  every job, and the canvas Field readout shows the corrected work area.
+- `Mirror horizontally` and `Mirror vertically` in the right panel apply to
+  planning, framing, and marking. The toggles persist in the browser's
+  `localStorage`.
 
 **Selection**
 
@@ -304,12 +318,14 @@ every visible raster layer with `output=yes`. The job summary surfaces a
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-55 stdlib `unittest` cases; no third-party deps. Covers:
+68 stdlib `unittest` cases. Covers:
 
 - machine profile parsing and missing-section error
 - DXF import: `LINE`, `LWPOLYLINE`, old-style `POLYLINE`/`VERTEX`/`SEQEND`,
   and normalized import output
 - pulse-width snap to JPT M7 table
+- profile-driven pulse-width tables with JPT M7 fallback
+- scale-correction calibration load/save and effective field size
 - frequency-bound rejection
 - 0..100% power-range enforcement
 - ARM rejection (`arm=False` and wrong-token cases)
@@ -326,6 +342,17 @@ every visible raster layer with `output=yes`. The job summary surfaces a
   blocked without ARM, layers allow power up to 100%, mark runs once per
   emitting layer, raster layer emits hatch lines for closed shapes, skips
   open paths, and hardware execution is patched at the isolated job boundary
+
+## Roadmap
+
+- More MOPA fiber sources: per-machine profiles (`FIELDSIZE`, frequency
+  bounds, and now `PULSEWIDTHS`) can describe tested machines. Contributions
+  of tested profiles under `profiles/` are welcome.
+- UI pulse-width presets are still the M7 list; making the UI read the profile
+  table is a next step.
+- CO2 laser cutters are out of scope for now. Different control boards
+  (Ruida/GRBL) mean a separate motion backend behind the same job/safety
+  model; this is tracked as a design goal with no timeline.
 
 ## Project layout
 
