@@ -14,13 +14,31 @@ files. Default behavior is dry-run / red-light framing only. Laser emission
 happens only after explicit ARM and a final confirmation, and only inside
 the current safety policy.
 
-## Quick start
+## Quick start (macOS)
 
 OpenMopa is currently developed and tested on macOS. The UI is a local web app,
 so the screen you use in the browser is simple; the hardware layer is the part
 that still needs platform-specific testing.
 
-Start from a fresh Terminal window.
+### The easy way — no Terminal, no programming
+
+1. **Download OpenMopa.** On this GitHub page, click the green **Code**
+   button, then **Download ZIP**. Unzip it.
+2. **Put the folder somewhere permanent**, for example inside `Documents`.
+   (Pick the final spot now — the app lives in this folder.)
+3. **Open the folder and double-click `Install OpenMopa.command`.**
+   If macOS warns that it "cannot verify the developer", right-click the
+   file and choose **Open** instead. The installer checks for Python,
+   installs everything OpenMopa needs, and builds `OpenMopa.app` — and tells
+   you in plain words if anything is missing.
+4. When it says **Done**, double-click **`OpenMopa.app`**. Your browser opens
+   with OpenMopa running. Drag `OpenMopa.app` to your **Dock** so next time
+   it is one click.
+
+To quit OpenMopa, close the Terminal window that the app opened.
+If you later move the folder, just double-click the installer again.
+
+### The Terminal way (for developers)
 
 ```bash
 git clone https://github.com/luizbueno3d/OpenMopa.git
@@ -63,15 +81,13 @@ export OPENMOPA_PROFILE="profiles/my-machine.ini"
 openmopa ui
 ```
 
-Optional macOS launcher:
+### About OpenMopa.app
 
-```bash
-osacompile -o "OpenMopa.app" scripts/launcher.applescript
-```
-
-The launcher opens a Terminal window for the server and opens your browser at
-`http://127.0.0.1:8765`. If the server is already running, it opens the browser
-without starting a second server.
+`Install OpenMopa.command` builds `OpenMopa.app` for you (developers can do the
+same by hand with `osacompile -o "OpenMopa.app" scripts/launcher.applescript`).
+The app opens a Terminal window for the server and opens your browser at
+`http://127.0.0.1:8765`. If the server is already running, it just opens the
+browser without starting a second server.
 
 `OpenMopa.app` must stay in the project folder because it finds the project
 relative to its own location. Drag it to the Dock rather than copying it to
@@ -96,6 +112,13 @@ and use dry-run / preview workflows only.
 
 ## Troubleshooting
 
+- **macOS blocks `Install OpenMopa.command` ("cannot verify the developer"):**
+  right-click (or Control-click) the file and choose **Open**, then **Open**
+  again in the dialog. This is standard macOS Gatekeeper behavior for files
+  downloaded from the internet.
+- **The installer says Python was not found:** download Python from
+  [python.org/downloads](https://www.python.org/downloads/), run that
+  installer, then double-click `Install OpenMopa.command` again.
 - **`openmopa: command not found`:** activate the virtual environment again with
   `source .venv/bin/activate`, then retry `openmopa ui`.
 - **Browser does not open:** manually open `http://127.0.0.1:8765`.
@@ -407,6 +430,7 @@ OPENMOPA_MOCK=1 openmopa ui
 ├── README.md
 ├── LICENSE
 ├── SECURITY.md
+├── Install OpenMopa.command    one-step installer: venv + deps + OpenMopa.app
 ├── pyproject.toml
 ├── assets/
 │   └── icons/                 macOS .icns, Windows .ico, Linux/Docker PNGs
